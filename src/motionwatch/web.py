@@ -85,6 +85,7 @@ class WebApp:
         self.host, self.port = parse_listen(listen)
         self._server: Optional[ThreadingHTTPServer] = None
         self._reload_lock = threading.Lock()
+        self.discover_lock = threading.Lock()
 
     def start(self) -> None:
         handler = type("Handler", (_Handler,), {"app": self})
@@ -136,6 +137,8 @@ class _Handler(BaseHTTPRequestHandler):
         ("PUT", r"/api/config", "api_put_config", True),
         ("GET", r"/api/cameras/([A-Za-z0-9_-]+)/(frame|alert)\.jpg", "api_camera_image", True),
         ("POST", r"/api/cameras/probe", "api_probe", True),
+        ("POST", r"/api/discover", "api_discover", True),
+        ("POST", r"/api/discover/streams", "api_discover_streams", True),
         ("POST", r"/api/telegram/chats", "api_tg_chats", True),
         ("POST", r"/api/telegram/test", "api_tg_test", True),
         ("POST", r"/api/password", "api_password", True),
@@ -372,6 +375,52 @@ class _Handler(BaseHTTPRequestHandler):
                             "Couldn't get a picture from that camera. Check the URL, username and password, "
                             "and that this machine can reach the camera.")
         self._bytes(jpeg, "image/jpeg")
+
+    def api_discover(self):
+        from urllib.parse import urlsplit
+
+        from .discovery import discover, template_urls
+
+        if not self.app.discover_lock.acquire(blocking=False):
+            raise HttpError(HTTPStatus.CONFLICT, "A search is already running - try again in a few seconds")
+        try:
+            result = discover()
+        finally:
+            self.app.discover_lock.release()
+        existing = {}
+        for c in self._raw().get("cameras") or []:
+            if isinstance(c, dict) and c.get("url"):
+                try:
+                    host = urlsplit(_expand_env(str(c["url"]))).hostname
+                except ConfigError:
+                    host = None
+                if host:
+                    existing[host] = c.get("name") or host
+        for cam in result["cameras"]:
+            cam["added_as"] = existing.get(cam["ip"])
+            port = (cam.get("rtsp_ports") or [554])[0]
+            cam["templates"] = template_urls(cam["ip"], port)
+        log.info("Camera search found %d device(s) on %s", len(result["cameras"]), ", ".join(result["networks"]))
+        self._json(result)
+
+    def api_discover_streams(self):
+        import ipaddress
+        from urllib.parse import urlsplit
+
+        from .discovery import OnvifError, onvif_stream_urls
+
+        body = self._body()
+        url = str(body.get("onvif_url") or "")
+        try:
+            host = urlsplit(url).hostname or ""
+            if not ipaddress.ip_address(host).is_private:
+                raise ValueError
+        except ValueError:
+            raise HttpError(400, "Only cameras on the local network can be queried") from None
+        try:
+            self._json(onvif_stream_urls(url, str(body.get("username") or ""), str(body.get("password") or "")))
+        except OnvifError as exc:
+            raise HttpError(HTTPStatus.BAD_GATEWAY, str(exc)) from None
 
     # ---- telegram ----------------------------------------------------
     def _token_from(self, body: dict) -> str:

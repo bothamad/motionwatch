@@ -15,7 +15,7 @@ const TUNING = [
 ];
 
 const S = { session: null, config: null, saved: "", status: null, view: "dashboard", editCam: null,
-  timezones: null, probe: {}, pollTimer: null };
+  timezones: null, probe: {}, pollTimer: null, found: null, discovered: {} };
 
 /* ---------- helpers ---------- */
 function h(tag, attrs, ...kids) {
@@ -299,16 +299,92 @@ function viewCameras() {
   const cams = S.config.cameras;
   return h("div", {},
     h("div", { class: "head" }, h("div", {}, h("h1", {}, "Cameras"), h("div", { class: "muted" }, "Each camera is watched separately, with its own schedule and sensitivity.")),
-      h("button", { class: "primary", onclick: () => {
-        const cam = { id: randomId(), name: `Camera ${cams.length + 1}`, url: "", username: "", password: "", schedule: "always", enabled: true };
-        cams.push(cam); S.editCam = cam.id; renderView();
-      } }, "+ Add camera")),
+      h("div", { class: "row" },
+        h("button", { onclick: (e) => findCameras(e.currentTarget) }, "⌕ Find cameras"),
+        h("button", { class: "primary", onclick: () => {
+          const cam = { id: randomId(), name: `Camera ${cams.length + 1}`, url: "", username: "", password: "", schedule: "always", enabled: true };
+          cams.push(cam); S.editCam = cam.id; renderView();
+        } }, "+ Add camera"))),
+    S.found ? foundCard() : null,
     h("div", { class: "card" }, cams.length ? cams.map((c) => h("div", { class: "list-item" },
       h("div", {}, h("div", {}, h("b", {}, c.name || "(no name)"), c.enabled ? "" : h("span", { class: "pill idle", style: "margin-left:8px" }, "Disabled")),
         h("div", { class: "muted small mono" }, c.url || "no URL yet")),
       h("div", { class: "row" }, h("span", { class: "pill" }, c.schedule === "always" || !c.schedule ? "Always" : c.schedule),
         h("button", { onclick: () => { S.editCam = c.id; renderView(); } }, "Edit"))))
       : h("p", { class: "muted", style: "margin:0" }, "No cameras yet. Press ", h("b", {}, "Add camera"), " to connect your first one.")));
+}
+
+/* ---------- camera discovery ---------- */
+async function findCameras(btn) {
+  btn.disabled = true; const old = btn.textContent; btn.textContent = "Searching the network…";
+  try { S.found = await api("POST", "/api/discover"); renderView(false); }
+  catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
+function camLabel(d) {
+  const parts = [d.manufacturer, d.model].filter(Boolean);
+  return parts.length ? parts.join(" ") : d.name || "Camera";
+}
+
+function foundCard() {
+  const list = S.found.cameras;
+  const close = h("button", { class: "link", onclick: () => { S.found = null; renderView(false); } }, "Hide");
+  if (!list.length) {
+    return h("div", { class: "card" }, h("div", { class: "between" }, h("h2", { style: "margin:0" }, "No cameras found"), close),
+      h("p", { class: "muted", style: "margin:8px 0 0" }, `Searched ${S.found.networks.join(", ") || "the local network"}. `,
+        "Cameras on a different network or VLAN can't be found - add them by hand with ", h("b", {}, "Add camera"),
+        ". Also check that ONVIF or RTSP is switched on in the camera's own settings."));
+  }
+  return h("div", { class: "card" },
+    h("div", { class: "between" }, h("h2", { style: "margin:0" }, `Found ${list.length} device${list.length === 1 ? "" : "s"}`), close),
+    h("p", { class: "muted small" }, `On ${S.found.networks.join(", ")}. Devices answering ONVIF can tell MotionWatch their own stream address once you enter their username and password.`),
+    list.map((d) => h("div", { class: "list-item" },
+      h("div", {}, h("div", {}, h("b", {}, camLabel(d)), " ", h("span", { class: "mono muted" }, d.ip)),
+        h("div", { class: "row small", style: "margin-top:2px;gap:6px" },
+          d.onvif_url ? h("span", { class: "pill ok" }, "ONVIF") : null,
+          d.rtsp_ports && d.rtsp_ports.length ? h("span", { class: "pill" }, "RTSP port " + d.rtsp_ports.join(", ")) : null,
+          d.source === "scan" ? h("span", { class: "muted" }, "ONVIF not answering - you'll pick the URL format") : null)),
+      d.added_as ? h("span", { class: "pill idle" }, `Added as ${d.added_as}`)
+        : h("button", { class: "primary", onclick: () => {
+          const cams = S.config.cameras;
+          const generic = !d.name || /^(IPC|IP ?Camera|NVR|Camera)$/i.test(d.name) || d.name.toLowerCase() === (d.manufacturer || "").toLowerCase();
+          const cam = { id: randomId(), name: generic ? `${camLabel(d)} (.${d.ip.split(".").pop()})` : d.name,
+            url: "", username: "", password: "", schedule: "always", enabled: true };
+          cams.push(cam); S.discovered[cam.id] = d; S.editCam = cam.id; updateDirty(); renderView(false);
+        } }, "Add"))));
+}
+
+function discoveryHelper(cam, d) {
+  const useUrl = (url) => { cam.url = url; updateDirty(); renderView(false);
+    const btn = [...document.querySelectorAll("button")].find((b) => b.textContent === "Test connection");
+    if (btn) btn.click(); };
+  const user = h("input", { type: "text", autocomplete: "off", ...bindText(cam, "username"), placeholder: "admin" });
+  const pass = h("input", { type: "password", autocomplete: "new-password", ...bindText(cam, "password") });
+  const templates = h("select", {}, d.templates.map((t) => h("option", { value: t.sub }, t.brand)));
+  return h("div", { class: "card stack", style: "border-color:var(--accent)" },
+    h("div", { class: "between" }, h("h2", { style: "margin:0" }, `Set up ${camLabel(d)} at ${d.ip}`),
+      h("button", { class: "link", onclick: () => { delete S.discovered[cam.id]; renderView(false); } }, "Hide")),
+    d.onvif_url ? [
+      h("p", { class: "muted", style: "margin:0" }, "Enter the camera's login (the one you use in its app or web page). MotionWatch will ask the camera for its stream address and pick the low-resolution sub-stream."),
+      h("div", { class: "fields" }, field("Camera username", user), field("Camera password", pass)),
+      h("div", { class: "row" }, h("button", { class: "primary", onclick: (e) => busy(e.currentTarget, async () => {
+        const r = await api("POST", "/api/discover/streams", { onvif_url: d.onvif_url, username: cam.username, password: cam.password });
+        d.streams = r.streams; d.recommended = r.recommended;
+        toast("Got the stream address from the camera");
+        useUrl(r.recommended);
+      }) }, "Get stream address"), h("span", { class: "muted small" }, "Doesn't work? Some cameras need ONVIF enabled or a separate ONVIF user in their settings.")),
+      d.streams ? h("div", {}, h("div", { class: "small muted", style: "margin-bottom:4px" }, "Streams the camera offers:"),
+        d.streams.map((s) => h("div", { class: "list-item" },
+          h("div", {}, h("b", {}, s.name), " ", h("span", { class: "muted" }, [s.width && `${s.width}×${s.height}`, s.codec].filter(Boolean).join(" · ")),
+            s.url === d.recommended ? h("span", { class: "pill ok", style: "margin-left:8px" }, "Recommended") : null,
+            cam.url === s.url ? h("span", { class: "pill", style: "margin-left:8px" }, "In use") : null,
+            h("div", { class: "mono small muted" }, s.url)),
+          cam.url === s.url ? null : h("button", { onclick: () => useUrl(s.url) }, "Use")))) : null,
+    ] : [
+      h("p", { class: "muted", style: "margin:0" }, "This device has an RTSP port open but didn't answer ONVIF. Pick the brand to fill in the usual stream address, then enter the login below and press Test connection."),
+      h("div", { class: "row" }, templates, h("button", { onclick: () => useUrl(templates.value) }, "Use this format")),
+    ]);
 }
 
 function cameraEditor(cam) {
@@ -338,6 +414,7 @@ function cameraEditor(cam) {
       if (!confirm(`Remove camera "${cam.name}"? (Takes effect when you save.)`)) return;
       S.config.cameras.splice(S.config.cameras.indexOf(cam), 1); S.editCam = null; renderView();
     } }, "Remove camera")),
+    S.discovered[cam.id] ? discoveryHelper(cam, S.discovered[cam.id]) : null,
     h("div", { class: "card stack" }, h("h2", {}, "Connection"),
       h("div", { class: "fields" },
         field("Name", h("input", { type: "text", ...bindText(cam, "name"), maxlength: 60 })),

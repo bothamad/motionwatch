@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 - 2026-11-22
+
+- **Find cameras**: one button on the Cameras page searches the local network.
+  - ONVIF WS-Discovery finds IP cameras and NVRs with their maker and model.
+  - A quick scan for open RTSP ports catches cameras with ONVIF switched off.
+  - Shows which devices are already added.
+- **Automatic stream address**: enter a discovered camera's login and MotionWatch asks the camera
+  for its stream URLs over ONVIF, picks the low-resolution sub-stream and tests it.
+- For cameras without ONVIF, pick the brand to fill in the usual RTSP address.
+
 ## 0.2.1 - 2026-11-22
 
 - Fix: the .deb left out the web interface's page files, so the web page showed an internal error.

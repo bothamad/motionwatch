@@ -52,6 +52,8 @@ flowchart LR
 | **A busy road** in the corner sets it off | Road is inside the frame | **Test connection** on the camera page and drag a box over the road |
 | Alerts when **IR night mode switches on** at dusk | The whole picture changes brightness at once | Raise **Sensitivity threshold** to `35-40`; the detector re-learns the background within seconds |
 | **High CPU** on a Raspberry Pi | Analysing the 4K main stream | Use the camera's **sub-stream** (e.g. Hikvision `/Streaming/Channels/102`, Dahua `subtype=1`) and/or raise **Check every** |
+| **Find cameras** misses a camera | Different network/VLAN, or ONVIF and RTSP switched off | Turn on ONVIF (and RTSP) in the camera's settings - some brands need a separate ONVIF user. Or **Add camera** by hand |
+| **Get stream address** says the login was rejected | Wrong login, or ONVIF uses its own account | Check the camera's ONVIF user settings, and that its clock is roughly right |
 | Camera shows **Offline** | Wrong URL, password, or RTSP disabled on the camera | Use **Test connection** on the camera page; try the URL in VLC from the same network |
 | Grey / smeared frames | UDP packet loss on Wi-Fi | Already handled - MotionWatch forces RTSP over **TCP** |
 | **Find chats** shows nothing | Nobody has messaged the bot yet | Open your bot in Telegram, press **Start** (or add it to the group and say hi), then try again |
@@ -64,16 +66,17 @@ flowchart LR
 
 1. **Install** the `.deb` from the [latest release](https://github.com/bothamad/motionwatch/releases/latest):
    ```sh
-   wget https://github.com/bothamad/motionwatch/releases/latest/download/motionwatch_0.2.1_all.deb
-   sudo apt install ./motionwatch_0.2.1_all.deb
+   wget https://github.com/bothamad/motionwatch/releases/latest/download/motionwatch_0.3.0_all.deb
+   sudo apt install ./motionwatch_0.3.0_all.deb
    ```
    The service starts straight away and prints the web address and a one-time **setup code**.
 2. **Open `http://<server-ip>:8080`** in your browser, enter the setup code and choose an admin password.
    (Lost the code? `sudo cat /var/lib/motionwatch/setup-code`)
 3. **Telegram** page - create a bot with [@BotFather](https://t.me/BotFather), paste the token, send your bot a
    message, press **Find chats**, then **Send test message**.
-4. **Cameras** page - **Add camera**, paste the stream URL, username and password, press **Test connection**.
-   You'll see a live picture; drag on it to mark areas to ignore.
+4. **Cameras** page - press **Find cameras**, then **Add** next to each camera and enter its login.
+   MotionWatch asks the camera for its stream address and shows a live picture; drag on it to mark areas
+   to ignore. (Cameras it can't find: **Add camera** and paste the stream URL.)
 5. **Schedules** page - set when each camera is armed (or leave it on *Always*), then **Save & apply**.
 
 Changes apply instantly - no restart needed. Forgot the password? `sudo motionwatch set-password`.
@@ -98,6 +101,10 @@ Schedules page shows exactly when it's armed.
 **🌐 Managed from your browser**
 Dashboard with live view, camera state, last motion and last alert picture. Add cameras, draw ignore zones,
 edit schedules and connect Telegram - changes apply instantly. Works on your phone too.
+
+**🔎 Finds your cameras**
+One click searches the network (ONVIF + RTSP port scan). Enter a camera's login and it fetches the right
+stream address itself - no hunting for brand-specific URLs.
 
 **📷 Any camera with a stream**
 RTSP and HTTP/MJPEG IP cameras, NVR/DVR channel streams (Hikvision, Dahua, Reolink, TP-Link Tapo, Uniview…) and
@@ -165,6 +172,9 @@ docker logs motionwatch    # shows the setup code
 ```
 
 Then open `http://<host>:8080`. Or use the included [docker-compose.yml](docker-compose.yml).
+
+**Find cameras** needs the container on the host network (`--network host` instead of `-p 8080:8080`),
+because Docker's default network blocks the discovery broadcast.
 
 ## Safe by design
 
