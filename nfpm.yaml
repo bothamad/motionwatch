@@ -1,0 +1,52 @@
+# Builds the .deb:  VERSION=0.1.0 nfpm package -p deb -t dist/
+name: motionwatch
+arch: all
+platform: linux
+version: ${VERSION}
+section: video
+priority: optional
+maintainer: "bothamad <bothamad@users.noreply.github.com>"
+description: |
+  CCTV motion detection with scheduled Telegram alerts.
+  Watches RTSP/HTTP/USB cameras, detects movement within configurable
+  weekly schedules and sends an annotated snapshot to Telegram.
+homepage: https://github.com/bothamad/motionwatch
+license: MIT
+
+depends:
+  - python3 (>= 3.9)
+  - python3-opencv
+  - python3-numpy
+  - python3-yaml
+  - python3-requests
+  - adduser
+recommends:
+  - ffmpeg
+
+contents:
+  - src: ./src/motionwatch/
+    dst: /usr/lib/motionwatch/motionwatch/
+  - src: ./packaging/motionwatch.sh
+    dst: /usr/bin/motionwatch
+    file_info: { mode: 0755 }
+  - src: ./packaging/motionwatch.service
+    dst: /lib/systemd/system/motionwatch.service
+  - src: ./config.example.yaml
+    dst: /etc/motionwatch/config.yaml
+    type: config|noreplace
+    file_info: { mode: 0640 }
+  - src: ./packaging/motionwatch.env
+    dst: /etc/motionwatch/motionwatch.env
+    type: config|noreplace
+    file_info: { mode: 0640 }
+  - src: ./config.example.yaml
+    dst: /usr/share/doc/motionwatch/config.example.yaml
+  - src: ./README.md
+    dst: /usr/share/doc/motionwatch/README.md
+  - src: ./LICENSE
+    dst: /usr/share/doc/motionwatch/copyright
+
+scripts:
+  postinstall: ./packaging/scripts/postinstall.sh
+  preremove: ./packaging/scripts/preremove.sh
+  postremove: ./packaging/scripts/postremove.sh

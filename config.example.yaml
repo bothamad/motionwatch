@@ -1,0 +1,66 @@
+# MotionWatch configuration
+# Values like ${NAME} are read from the environment (see /etc/motionwatch/motionwatch.env).
+# Use ${NAME:-default} to supply a fallback.
+
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"   # from @BotFather
+  chat_id: "${TELEGRAM_CHAT_ID}"       # a user/group id; a list of ids also works
+  send_startup_message: true
+
+# IANA timezone used for schedules; omit to use the system timezone.
+# timezone: Africa/Johannesburg
+
+# Optional: keep a copy of every alert image on disk.
+# snapshot_dir: /var/lib/motionwatch/snapshots
+
+log_level: INFO
+
+# Tuning applied to every camera unless the camera overrides it.
+defaults:
+  threshold: 25          # pixel difference (0-255) that counts as change
+  min_area: 1500         # smallest moving blob, in px^2 on the 640px-wide analysis frame
+  min_motion_frames: 3   # consecutive frames with motion before alerting
+  cooldown_seconds: 60   # minimum time between alerts per camera
+  frame_interval: 0.25   # seconds between analysed frames
+  resize_width: 640
+  background_alpha: 0.05 # how fast the background adapts (higher = forgets faster)
+  warmup_frames: 25
+
+# Named arming schedules. "always" is built in.
+# days: mon..sun, weekdays, weekends, daily
+# A window whose end is before its start runs past midnight
+# (e.g. mon 18:00 -> tue 07:00 belongs to mon). "24:00" = end of day.
+schedules:
+  night:
+    - days: [weekdays]
+      start: "18:00"
+      end: "07:00"
+    - days: [weekends]
+      start: "00:00"
+      end: "24:00"
+  office_closed:
+    - days: [weekdays]
+      start: "17:30"
+      end: "08:00"
+    - days: [sat, sun]
+      start: "00:00"
+      end: "24:00"
+
+cameras:
+  - name: Front door
+    url: "rtsp://${CAM_USER}:${CAM_PASS}@192.168.1.10:554/Streaming/Channels/102"
+    schedule: night
+
+  - name: Driveway
+    url: "rtsp://${CAM_USER}:${CAM_PASS}@192.168.1.11:554/stream2"
+    schedule: always
+    min_area: 3000
+    cooldown_seconds: 120
+    # Ignore areas (fractions of the frame: x, y, width, height), e.g. a busy road
+    ignore_regions:
+      - [0.0, 0.0, 1.0, 0.2]
+
+  # USB webcam: use the device index
+  # - name: Garage
+  #   url: "0"
+  #   enabled: false

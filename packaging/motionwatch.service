@@ -1,0 +1,33 @@
+[Unit]
+Description=MotionWatch CCTV motion alerts
+Documentation=https://github.com/bothamad/motionwatch
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=motionwatch
+Group=motionwatch
+EnvironmentFile=-/etc/motionwatch/motionwatch.env
+ExecStartPre=/usr/bin/motionwatch -c /etc/motionwatch/config.yaml check-config
+ExecStart=/usr/bin/motionwatch -c /etc/motionwatch/config.yaml run
+Restart=always
+RestartSec=10
+StateDirectory=motionwatch
+SupplementaryGroups=video
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/motionwatch
+
+[Install]
+WantedBy=multi-user.target

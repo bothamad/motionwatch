@@ -1,0 +1,13 @@
+services:
+  motionwatch:
+    image: ghcr.io/bothamad/motionwatch:latest
+    # build: .
+    restart: unless-stopped
+    env_file: ./motionwatch.env
+    environment:
+      TZ: Etc/UTC
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./data:/data
+    # For USB cameras:
+    # devices: ["/dev/video0:/dev/video0"]
