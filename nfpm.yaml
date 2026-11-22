@@ -24,8 +24,10 @@ recommends:
   - ffmpeg
 
 contents:
-  - src: ./src/motionwatch/
-    dst: /usr/lib/motionwatch/motionwatch/
+  # type: tree keeps sub-folders (web/) - without it nfpm flattens them
+  - src: ./src/motionwatch
+    dst: /usr/lib/motionwatch/motionwatch
+    type: tree
   - src: ./packaging/motionwatch.sh
     dst: /usr/bin/motionwatch
     file_info: { mode: 0755 }

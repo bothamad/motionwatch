@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-11-22
+
+- Fix: the .deb left out the web interface's page files, so the web page showed an internal error.
+- Release check now installs the .deb and loads the web page before publishing.
+
 ## 0.2.0 - 2026-11-22
 
 - **Web interface** (port 8080): manage cameras, schedules and Telegram from the browser.

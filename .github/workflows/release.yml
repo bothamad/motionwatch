@@ -40,7 +40,11 @@ jobs:
           docker run --rm -v "$PWD/dist:/dist" debian:bookworm sh -ec '
             apt-get update -qq
             apt-get install -y -qq /dist/motionwatch_*_all.deb >/dev/null
-            motionwatch --version'
+            motionwatch --version
+            test -f /usr/lib/motionwatch/motionwatch/web/index.html
+            motionwatch -d /tmp/mw --web 127.0.0.1:8080 run &
+            sleep 5
+            python3 -c "import urllib.request as u; [print(p, u.urlopen(\"http://127.0.0.1:8080\" + p).status) for p in (\"/\", \"/static/app.js\", \"/static/app.css\", \"/api/session\")]"'
 
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS

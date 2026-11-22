@@ -64,8 +64,8 @@ flowchart LR
 
 1. **Install** the `.deb` from the [latest release](https://github.com/bothamad/motionwatch/releases/latest):
    ```sh
-   wget https://github.com/bothamad/motionwatch/releases/latest/download/motionwatch_0.2.0_all.deb
-   sudo apt install ./motionwatch_0.2.0_all.deb
+   wget https://github.com/bothamad/motionwatch/releases/latest/download/motionwatch_0.2.1_all.deb
+   sudo apt install ./motionwatch_0.2.1_all.deb
    ```
    The service starts straight away and prints the web address and a one-time **setup code**.
 2. **Open `http://<server-ip>:8080`** in your browser, enter the setup code and choose an admin password.
