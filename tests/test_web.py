@@ -52,7 +52,7 @@ class Client:
             return status, raw
 
 
-def setup(app, client, password="correct horse"):
+def first_run(app, client, password="correct horse"):
     code = app.auth.setup_code()
     status, _ = client.call("POST", "/api/setup", {"code": code, "password": password})
     assert status == 200
@@ -67,7 +67,7 @@ def test_setup_requires_code(server):
     c = Client(server)
     assert c.call("GET", "/api/session")[1]["setup_required"] is True
     assert c.call("POST", "/api/setup", {"code": "WRONG", "password": "longenough"})[0] == 403
-    setup(server, c)
+    first_run(server, c)
     assert c.call("GET", "/api/session")[1]["authenticated"] is True
     # second setup is refused
     assert c.call("POST", "/api/setup", {"code": "x", "password": "longenough"})[0] == 409
@@ -75,7 +75,7 @@ def test_setup_requires_code(server):
 
 def test_api_requires_login_and_header(server):
     c = Client(server)
-    setup(server, c)
+    first_run(server, c)
     anon = Client(server)
     assert anon.call("GET", "/api/config")[0] == 401
     assert c.call("PUT", "/api/config", {}, header=False)[0] == 403
@@ -86,7 +86,7 @@ def test_api_requires_login_and_header(server):
 
 def test_login_is_throttled(server):
     c = Client(server)
-    setup(server, c)
+    first_run(server, c)
     anon = Client(server)
     for _ in range(5):
         anon.call("POST", "/api/login", {"password": "bad"})
@@ -95,7 +95,7 @@ def test_login_is_throttled(server):
 
 def test_secrets_are_masked_and_kept(server):
     c = Client(server)
-    setup(server, c)
+    first_run(server, c)
     _, cfg = c.call("GET", "/api/config")
     cfg["telegram"]["bot_token"] = "123:SECRETTOKEN"
     cfg["telegram"]["chat_ids"] = ["42"]
@@ -114,14 +114,14 @@ def test_secrets_are_masked_and_kept(server):
 
 def test_invalid_config_rejected(server):
     c = Client(server)
-    setup(server, c)
+    first_run(server, c)
     status, res = c.call("PUT", "/api/config", {"cameras": [{"name": "x", "url": "ftp://nope"}]})
     assert status == 400 and "stream URL" in res["error"]
 
 
 def test_status_and_pages(server):
     c = Client(server)
-    setup(server, c)
+    first_run(server, c)
     status, st = c.call("GET", "/api/status")
     assert status == 200 and st["telegram_ready"] is False
     assert c.call("GET", "/")[0] == 200
