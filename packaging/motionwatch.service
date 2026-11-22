@@ -8,12 +8,14 @@ After=network-online.target
 Type=simple
 User=motionwatch
 Group=motionwatch
+Environment=MOTIONWATCH_DATA=/var/lib/motionwatch
 EnvironmentFile=-/etc/motionwatch/motionwatch.env
-ExecStartPre=/usr/bin/motionwatch -c /etc/motionwatch/config.yaml check-config
-ExecStart=/usr/bin/motionwatch -c /etc/motionwatch/config.yaml run
+ExecStart=/usr/bin/motionwatch run
 Restart=always
 RestartSec=10
 StateDirectory=motionwatch
+StateDirectoryMode=0750
+UMask=0077
 SupplementaryGroups=video
 
 # Hardening
@@ -21,6 +23,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+PrivateDevices=no
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

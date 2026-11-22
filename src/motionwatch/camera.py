@@ -17,8 +17,11 @@ from .notifier import Alert
 
 log = logging.getLogger(__name__)
 
-# Prefer TCP for RTSP: far fewer corrupted frames on Wi-Fi cameras.
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+# Prefer TCP for RTSP: far fewer corrupted frames on Wi-Fi cameras; 10 s socket timeout.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;10000000")
+
+PREVIEW_EVERY = 2.0  # seconds between preview frames kept for the web UI
+PREVIEW_WIDTH = 640
 
 
 def open_capture(url: str) -> cv2.VideoCapture:
@@ -31,19 +34,25 @@ def open_capture(url: str) -> cv2.VideoCapture:
     return cap
 
 
+def _preview(frame) -> bytes:
+    h, w = frame.shape[:2]
+    if w > PREVIEW_WIDTH:
+        frame = cv2.resize(frame, (PREVIEW_WIDTH, int(h * PREVIEW_WIDTH / w)), interpolation=cv2.INTER_AREA)
+    return encode_jpeg(frame, 75)
+
+
 class CameraWorker(threading.Thread):
     def __init__(
         self,
         cfg: CameraConfig,
         on_alert: Callable[[Alert], None],
-        stop_event: threading.Event,
         now: Callable[[], datetime],
         snapshot_dir: Optional[str] = None,
     ):
         super().__init__(name=f"cam:{cfg.name}", daemon=True)
         self.cfg = cfg
         self.on_alert = on_alert
-        self.stop_event = stop_event
+        self.stop_event = threading.Event()
         self.now = now
         self.snapshot_dir = snapshot_dir
         self.detector = MotionDetector(
@@ -56,6 +65,27 @@ class CameraWorker(threading.Thread):
         )
         self._last_alert = 0.0
         self._streak = 0
+        # State read by the web UI
+        self.state = "starting"  # starting | disarmed | connecting | online | offline
+        self.error: Optional[str] = None
+        self.last_motion: Optional[float] = None  # epoch seconds
+        self.last_frame: Optional[bytes] = None
+        self.last_frame_at: Optional[float] = None
+        self.last_alert_jpeg: Optional[bytes] = None
+        self.alerts_sent = 0
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def snapshot_state(self) -> dict:
+        return {
+            "state": self.state,
+            "error": self.error,
+            "last_motion": self.last_motion,
+            "last_frame_at": self.last_frame_at,
+            "has_alert_image": self.last_alert_jpeg is not None,
+            "alerts": self.alerts_sent,
+        }
 
     def run(self) -> None:
         backoff = 2.0
@@ -71,14 +101,21 @@ class CameraWorker(threading.Thread):
                 if cap is not None:
                     cap.release()
                     cap = None
+                self.state = "disarmed"
+                self.error = None
                 self.detector.reset()
                 self.stop_event.wait(15)
                 continue
 
             if cap is None or not cap.isOpened():
+                self.state = "connecting"
                 log.info("[%s] connecting to %s", self.cfg.name, redact_url(self.cfg.url))
                 cap = open_capture(self.cfg.url)
+                if self.stop_event.is_set():
+                    break
                 if not cap.isOpened():
+                    self.state = "offline"
+                    self.error = "Could not open the stream - check the URL, username and password"
                     log.warning("[%s] connect failed, retry in %.0fs", self.cfg.name, backoff)
                     cap.release()
                     cap = None
@@ -90,6 +127,8 @@ class CameraWorker(threading.Thread):
 
             ok = self._loop(cap)
             if not ok:
+                self.state = "offline"
+                self.error = "Stream stopped sending frames"
                 log.warning("[%s] stream lost, reconnecting", self.cfg.name)
                 cap.release()
                 cap = None
@@ -104,6 +143,7 @@ class CameraWorker(threading.Thread):
         """Read frames until disarmed/stopped (True) or stream fails (False)."""
         last_proc = 0.0
         last_sched_check = time.monotonic()
+        last_preview = 0.0
         failures = 0
         while not self.stop_event.is_set():
             # grab() continuously so we always analyse the newest frame
@@ -125,6 +165,12 @@ class CameraWorker(threading.Thread):
             ok, frame = cap.retrieve()
             if not ok or frame is None:
                 continue
+            self.state = "online"
+            self.error = None
+            if t - last_preview >= PREVIEW_EVERY:
+                last_preview = t
+                self.last_frame = _preview(frame)
+                self.last_frame_at = time.time()
             self._handle(frame)
         return True
 
@@ -136,6 +182,7 @@ class CameraWorker(threading.Thread):
         self._streak += 1
         if self._streak < self.cfg.min_motion_frames:
             return
+        self.last_motion = time.time()
         t = time.monotonic()
         if self._last_alert and t - self._last_alert < self.cfg.cooldown_seconds:
             return
@@ -145,9 +192,12 @@ class CameraWorker(threading.Thread):
         label = f"{self.cfg.name}  {ts}"
         img = annotate(frame, boxes, label)
         jpeg = encode_jpeg(img)
+        self.last_alert_jpeg = jpeg
+        self.alerts_sent += 1
         log.info("[%s] motion detected (%d regions)", self.cfg.name, len(boxes))
         self._save(jpeg)
-        self.on_alert(Alert(caption=f"\U0001F6A8 Motion detected: {self.cfg.name}\n{ts}", photo=jpeg))
+        if not self.stop_event.is_set():
+            self.on_alert(Alert(caption=f"\U0001F6A8 Motion detected: {self.cfg.name}\n{ts}", photo=jpeg))
 
     def _save(self, jpeg: bytes) -> None:
         if not self.snapshot_dir:

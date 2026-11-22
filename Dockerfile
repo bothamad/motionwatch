@@ -11,7 +11,8 @@ COPY src ./src
 RUN pip install --no-cache-dir .
 
 USER motionwatch
-ENV MOTIONWATCH_CONFIG=/config/config.yaml PYTHONUNBUFFERED=1
-VOLUME ["/config", "/data"]
+ENV MOTIONWATCH_DATA=/data MOTIONWATCH_WEB_LISTEN=0.0.0.0:8080 PYTHONUNBUFFERED=1
+VOLUME ["/data"]
+EXPOSE 8080
 ENTRYPOINT ["motionwatch"]
 CMD ["run"]

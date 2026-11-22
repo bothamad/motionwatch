@@ -3,7 +3,8 @@
 A schedule is a list of windows. Each window has a set of days, a start and an
 end time. If ``end`` is earlier than ``start`` the window runs past midnight
 into the next day (e.g. ``mon 22:00 -> tue 06:00`` belongs to ``mon``).
-``end: "24:00"`` means end of day.
+``end: "24:00"`` means end of day; ``start == end`` (e.g. 00:00-00:00) means
+the whole day.
 """
 
 from __future__ import annotations
@@ -58,8 +59,8 @@ class Window:
         minute = now.hour * 60 + now.minute
         today = now.weekday()
         yesterday = (now - timedelta(days=1)).weekday()
-        if self.start == self.end:
-            return False
+        if self.start == self.end or (self.start == 0 and self.end == 1440):
+            return today in self.days  # whole day
         if self.start < self.end:
             return today in self.days and self.start <= minute < self.end
         # Overnight window

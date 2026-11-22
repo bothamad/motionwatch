@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "motionwatch"
 dynamic = ["version"]
-description = "CCTV/RTSP motion detection with scheduled Telegram photo alerts"
+description = "CCTV/RTSP motion detection with scheduled Telegram photo alerts and a web interface"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
@@ -34,6 +34,9 @@ version = { attr = "motionwatch.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+motionwatch = ["web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

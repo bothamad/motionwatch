@@ -9,3 +9,4 @@ config.yaml
 motionwatch.env
 !packaging/motionwatch.env
 data/
+.claude/

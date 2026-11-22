@@ -40,11 +40,12 @@ def test_missing_env_errors(monkeypatch):
 @pytest.mark.parametrize(
     "data",
     [
-        {"telegram": {"chat_id": 1}, "cameras": [{"url": "x"}]},
-        {"telegram": {"bot_token": "t", "chat_id": 1}, "cameras": []},
-        {"telegram": {"bot_token": "t", "chat_id": 1}, "cameras": [{"url": "x", "schedule": "nope"}]},
-        {"telegram": {"bot_token": "t", "chat_id": 1},
-         "cameras": [{"name": "a", "url": "x"}, {"name": "a", "url": "y"}]},
+        {"cameras": [{"url": "rtsp://x", "schedule": "nope"}]},
+        {"cameras": [{"name": "a", "url": "rtsp://x"}, {"name": "a", "url": "rtsp://y"}]},
+        {"cameras": [{"name": "a"}]},
+        {"cameras": [{"name": "a", "url": "file:///etc/passwd"}]},
+        {"timezone": "Mars/Base"},
+        {"schedules": {"n": [{"days": [], "start": "01:00", "end": "02:00"}]}},
     ],
 )
 def test_invalid(data):
@@ -63,3 +64,29 @@ def test_example_config_is_valid(monkeypatch):
 def test_redact_url():
     assert redact_url("rtsp://admin:pw@1.2.3.4/s") == "rtsp://***@1.2.3.4/s"
     assert redact_url("rtsp://1.2.3.4/s") == "rtsp://1.2.3.4/s"
+
+
+def test_incomplete_config_is_allowed_with_warnings():
+    cfg = parse_config({})
+    assert cfg.telegram is None and cfg.cameras == []
+    assert len(cfg.warnings) == 2
+
+
+def test_credentials_are_inserted_into_url():
+    cfg = parse_config({"cameras": [{"url": "rtsp://10.0.0.5:554/s", "username": "ad min", "password": "p@ss"}]})
+    assert cfg.cameras[0].url == "rtsp://ad%20min:p%40ss@10.0.0.5:554/s"
+
+
+def test_store_roundtrip_assigns_ids(tmp_path):
+    from motionwatch.config import ConfigStore
+
+    store = ConfigStore(str(tmp_path / "config.yaml"))
+    assert store.load_raw()["cameras"] == []  # initial config when the file is missing
+    raw = store.load_raw()
+    raw["cameras"].append({"name": "Gate", "url": "rtsp://1.2.3.4/s"})
+    store.save_raw(raw)
+    saved = store.load_raw()
+    assert saved["cameras"][0]["id"].startswith("cam-")
+    with pytest.raises(ConfigError):
+        store.save_raw({"cameras": [{"name": "x"}]})
+    assert store.load_raw()["cameras"][0]["name"] == "Gate"  # bad save left the file alone

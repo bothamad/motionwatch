@@ -50,3 +50,9 @@ def test_full_day_and_always():
     assert s.is_active(at("sun", "23:59"))
     assert not s.is_active(at("mon", "00:00"))
     assert Schedule.always().is_active(at("wed", "12:00"))
+
+
+def test_same_start_and_end_is_whole_day():
+    s = Schedule.from_config("x", [{"days": ["tue"], "start": "00:00", "end": "00:00"}])
+    assert s.is_active(at("tue", "00:00")) and s.is_active(at("tue", "23:59"))
+    assert not s.is_active(at("wed", "00:00"))

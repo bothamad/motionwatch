@@ -94,7 +94,10 @@ class TelegramNotifier:
 
     def stop(self, timeout: float = 10.0) -> None:
         if self._thread:
-            self._q.put(None)
+            try:
+                self._q.put(None, timeout=timeout)
+            except queue.Full:
+                pass
             self._thread.join(timeout)
 
     def _run(self) -> None:
@@ -103,3 +106,43 @@ class TelegramNotifier:
             if alert is None:
                 return
             self.send_now(alert)
+
+
+class TelegramError(Exception):
+    pass
+
+
+def bot_api(bot_token: str, method: str, api_base: str = "https://api.telegram.org", timeout: float = 15):
+    """Call a Bot API method and return ``result``; raise TelegramError with a readable message."""
+    if not bot_token or "/" in bot_token or ":" not in bot_token:
+        raise TelegramError("That doesn't look like a bot token (it should look like 123456:ABC-...)")
+    try:
+        resp = requests.get(f"{api_base}/bot{bot_token}/{method}", timeout=timeout)
+    except requests.RequestException as exc:
+        raise TelegramError(f"Could not reach Telegram ({type(exc).__name__})") from exc
+    try:
+        body = resp.json()
+    except ValueError as exc:
+        raise TelegramError(f"Unexpected reply from Telegram (HTTP {resp.status_code})") from exc
+    if not body.get("ok"):
+        desc = body.get("description", f"HTTP {resp.status_code}")
+        if resp.status_code == 401:
+            desc = "Telegram rejected the bot token - copy it again from @BotFather"
+        raise TelegramError(desc)
+    return body.get("result")
+
+
+def find_chats(bot_token: str) -> dict:
+    """Return the bot's username and chats that recently messaged it."""
+    me = bot_api(bot_token, "getMe")
+    updates = bot_api(bot_token, "getUpdates") or []
+    chats = {}
+    for u in updates:
+        for key in ("message", "channel_post", "my_chat_member", "edited_message"):
+            chat = (u.get(key) or {}).get("chat")
+            if chat:
+                title = chat.get("title") or " ".join(
+                    p for p in (chat.get("first_name"), chat.get("last_name")) if p
+                ) or chat.get("username") or str(chat["id"])
+                chats[str(chat["id"])] = {"id": str(chat["id"]), "title": title, "type": chat.get("type")}
+    return {"bot": me.get("username"), "chats": list(chats.values())}

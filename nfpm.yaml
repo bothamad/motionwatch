@@ -31,10 +31,6 @@ contents:
     file_info: { mode: 0755 }
   - src: ./packaging/motionwatch.service
     dst: /lib/systemd/system/motionwatch.service
-  - src: ./config.example.yaml
-    dst: /etc/motionwatch/config.yaml
-    type: config|noreplace
-    file_info: { mode: 0640 }
   - src: ./packaging/motionwatch.env
     dst: /etc/motionwatch/motionwatch.env
     type: config|noreplace
